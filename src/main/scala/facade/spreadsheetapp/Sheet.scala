@@ -21,4 +21,5 @@ trait Sheet extends js.Object {
 
   def newChart(): EmbeddedChartBuilder = js.native
 
+  def getLastRow(): Int = js.native
 }

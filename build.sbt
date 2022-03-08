@@ -49,7 +49,7 @@ def exploreFileForFunctions(directory: File): List[String] = {
     }
 
     def toGoogleFunction: List[String] = List(
-      s"function ${functionName.toUpperCase}($args) { return $functionName($args) }"
+      s"function ${functionName}($args) { return $functionName($args) }"
     )
 
     def toGoogleFunction(comments: List[String]): List[String] =
@@ -57,7 +57,7 @@ def exploreFileForFunctions(directory: File): List[String] = {
 
 
     def toOverloadedGoogleFunction: List[String] = List(
-      s"function ${functionName.toUpperCase}() { return $functionName.apply(void 0, arguments) }"
+      s"function ${functionName}() { return $functionName.apply(void 0, arguments) }"
     )
 
     def toOverloadedGoogleFunction(comments: List[String]): List[String] =

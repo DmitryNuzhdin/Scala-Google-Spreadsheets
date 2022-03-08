@@ -18,4 +18,11 @@ trait Range extends js.Object {
 
   def setValues(values: js.Array[js.Array[Data]]): Unit = js.native
 
+  def getColumn(): Int = js.native
+
+  def getRow(): Int = js.native
+
+  def sort(column: Int): Unit = js.native
+
+  def clear(): Unit = js.native
 }
