@@ -20,4 +20,6 @@ trait SpreadSheet extends js.Object {
 
   def insertSheet(sheetName: String): Sheet = js.native
 
+  def getNamedRanges(): js.Array[NamedRange] = js.native
+
 }

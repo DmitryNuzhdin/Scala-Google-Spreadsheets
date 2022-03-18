@@ -25,4 +25,6 @@ trait Range extends js.Object {
   def sort(column: Int): Unit = js.native
 
   def clear(): Unit = js.native
+
+  def getA1Notation(): String = js.native
 }
