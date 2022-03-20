@@ -1,7 +1,8 @@
 import cells.Cell.Data
 import facade.spreadsheetapp._
 
-import java.util.Date
+import java.time.LocalDate
+import java.util.{Calendar, Date}
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSExportTopLevel
 import js.JSConverters._
@@ -120,7 +121,7 @@ object Balance {
   object ScalaDate {
     def apply(a: js.Date): ScalaDate = {
       a.setHours(1)
-      ScalaDate((a.getTime() / (24D * 3600D * 1000D)).round)
+      ScalaDate((a.getTime() / (24D * 3600D * 1000D)).round).plusDays(1)
     }
   }
 
