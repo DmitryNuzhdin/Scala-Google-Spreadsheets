@@ -16,24 +16,36 @@ object Balance {
     .map(nr => nr.getName() -> nr.getRange())
     .toMap
 
-  val date = namedRangesMap("date")
-  val amount = namedRangesMap("amount")
-  val comment = namedRangesMap("comment")
-  val balance = namedRangesMap("balance")
-  val commit = namedRangesMap("commit")
+  val date: Option[Range] = namedRangesMap.get("date")
+  val amount: Option[Range] = namedRangesMap.get("amount")
+  val comment: Option[Range] = namedRangesMap.get("comment")
+  val balance: Option[Range] = namedRangesMap.get("balance")
+  val commit: Option[Range] = namedRangesMap.get("commit")
 
-  val deltaDate = namedRangesMap("deltaDate")
-  val deltaBalance = namedRangesMap("deltaBalance")
-  val delta = namedRangesMap("delta")
+  val deltaDate: Option[Range] = namedRangesMap.get("deltaDate")
+  val deltaBalance: Option[Range] = namedRangesMap.get("deltaBalance")
+  val delta: Option[Range] = namedRangesMap.get("delta")
+  val fullBalance: Option[Range] = namedRangesMap.get("fullBalance")
+  val balanceLeft: Option[Range] = namedRangesMap.get("balanceLeft")
 
-  val statistics = namedRangesMap("statistics")
+  val statistics: Option[Range] = namedRangesMap.get("statistics")
 
-  val balancesAndMargins = namedRangesMap("balancesAndMargins")
+  val balancesAndMargins: Option[Range] = namedRangesMap.get("balancesAndMargins")
 
+  val balances: Map[String, Double] = balancesAndMargins
+    .toList
+    .flatMap(bnm => arrayArrayJsToScala(bnm.getValues()))
+    .to(LazyList)
+    .flatMap { v =>
+      for {
+        name <- v.headOption.flatMap(_.stringOpt)
+        value <- v.drop(1).headOption.flatMap(_.doubleOpt)
+      } yield name -> value
+    }.toMap
 
   def dataSheet: Sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("data")
-  def formSheet: Sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("form")
 
+  def formSheet: Sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("form")
 
   case class RangeOpt(r: Range) {
     def getStringOpt: Option[String] = (r.getValue(): Any) match {
@@ -52,7 +64,7 @@ object Balance {
     }
 
     def getDateOpt: Option[ScalaDate] = (r.getValue(): Any) match {
-      case s: js.Date => Some(s)
+      case s: js.Date => Some(s.plusDays(1))
       case _ => None
     }
 
@@ -95,8 +107,8 @@ object Balance {
       case _ => None
     }
 
-    def dateOpt: Option[Date] = (data: Any) match {
-      case t: js.Date => Some(new java.util.Date(t.getTime().toLong))
+    def dateOpt: Option[ScalaDate] = (data: Any) match {
+      case t: js.Date => Some(t.plusDays(1))
       case _ => None
     }
 
@@ -121,7 +133,7 @@ object Balance {
   object ScalaDate {
     def apply(a: js.Date): ScalaDate = {
       a.setHours(1)
-      ScalaDate((a.getTime() / (24D * 3600D * 1000D)).round).plusDays(1)
+      ScalaDate((a.getTime() / (24D * 3600D * 1000D)).round)
     }
   }
 
@@ -142,9 +154,9 @@ object Balance {
       })
     }
 
-    def getOptDate(x: Int, y: Int): Option[js.Date] = {
+    def getOptDate(x: Int, y: Int): Option[ScalaDate] = {
       getOpt(x, y).flatMap((d: Any) => d match {
-        case t: js.Date => Some(t)
+        case t: js.Date => Some(t.plusDays(1))
         case _ => None
       })
     }
@@ -159,84 +171,100 @@ object Balance {
 
   def addBalanceRow(): Unit = {
     for {
-      dateV <- date.getDateOpt
-      amountV <- amount.getDoubleOpt
-      commentV <- comment.getStringOpt
-      balanceV <- balance.getStringOpt
+      dateV <- date.flatMap(_.getDateOpt)
+      amountV <- amount.flatMap(_.getDoubleOpt)
+      commentV <- comment.flatMap(_.getStringOpt)
+      balanceV <- balance.flatMap(_.getStringOpt)
     } {
       dataSheet.getRange(dataSheet.getLastRow() + 1, 1, 1, 4)
         .setValues(js.Array(js.Array(dateV.toJs, amountV, commentV, balanceV)))
 
-      refreshStatistics(2022, 1, balanceV)
+      refreshStatistics(balanceV)
 
-      amount.clear()
-      comment.clear()
-      balance.clear()
-
-      formSheet.getRange("a3").setValue(dateV.toJs)
-      formSheet.getRange("a4").setValue(date.getValue())
+      amount.foreach(_.clear())
+      comment.foreach(_.clear())
+      balance.foreach(_.clear())
     }
   }
 
-  def refreshStatistics(year: Int, month: Int, balance: String): Unit = {
-    val dataRange = dataSheet.getRange(2, 1, dataSheet.getLastRow(), 4)
-    dataRange.sort(1)
+  def refreshStatistics(balance: String): Unit = {
+    balances.get(balance).foreach { balanceMargin =>
 
-    val statisticsRange = dataSheet.getRange(2, 9, 31, 3)
-    statisticsRange.clear()
+      val todayJs: js.Date = new js.Date()
 
-    val dateFrom: ScalaDate = new js.Date(year, month, 20)
-    val dateTo: ScalaDate = new js.Date(if (month >= 11) year + 1 else year, (month + 1) % 12, 20)
+      val today: ScalaDate = todayJs
 
-    val allDates: IndexedSeq[ScalaDate] = (0L to 31L)
-      .map(dateFrom.plusDays)
-      .filter(_ < dateTo)
-      .toVector
+      val day = todayJs.getUTCDate().toInt
+      val month0 = todayJs.getMonth().toInt - (if (day < 20) 1 else 0)
+      val year = todayJs.getUTCFullYear().toInt - (if (month0 < 0) 1 else 0)
+      val month = if (month0 < 0) month0 + 12 else month0
 
-    case class Record(date: ScalaDate, amount: Double, balance: String)
+      val dataRange = dataSheet.getRange(2, 1, dataSheet.getLastRow(), 4)
+      dataRange.sort(1)
 
-    val values = dataRange.getValues()
+      val statisticsRange = dataSheet.getRange(2, 9, 31, 3)
+      statisticsRange.clear()
 
-    val initialBalance = 7500D
-    val today: ScalaDate = new js.Date()
+      val dateFrom: ScalaDate = new js.Date(year, month, 20)
+      val dateTo: ScalaDate = new js.Date(if (month >= 11) year + 1 else year, (month + 1) % 12, 20)
 
-    val records: List[Record] = (0 to values.size).flatMap(row =>
-      for {
-        date <- values.getOptDate(row, 0)
-        amount <- values.getOptDouble(row, 1)
-        balance <- values.getOptString(row, 3)
-      } yield Record(date, amount, balance))
-      .filter(r => r.date.getTime() >= dateFrom.getTime() && r.date.getTime() < dateTo.getTime())
-      .filter(_.balance == balance)
-      .toList
+      val allDates: IndexedSeq[ScalaDate] = (0L to 31L)
+        .map(dateFrom.plusDays)
+        .filter(_ < dateTo)
+        .toVector
 
-    val balanceData = allDates.zipWithIndex.map { case (date, index) =>
-      val expected = initialBalance - ((index + 1) * initialBalance / allDates.size)
-      val actual = initialBalance - records.to(LazyList).filter(_.date <= date).foldLeft(0D)(_ + _.amount)
-      (date, actual, expected)
+      case class Record(date: ScalaDate, amount: Double, balance: String)
+
+      val values = dataRange.getValues()
+
+      val records: List[Record] = (0 to values.size).flatMap(row =>
+        for {
+          date <- values.getOptDate(row, 0)
+          amount <- values.getOptDouble(row, 1)
+          balance <- values.getOptString(row, 3)
+        } yield Record(date, amount, balance))
+        .filter(r => r.date >= dateFrom && r.date < dateTo)
+        .filter(_.balance == balance)
+        .toList
+
+      val balanceData: Seq[(ScalaDate, Double, Double)] = allDates.zipWithIndex.map { case (date, index) =>
+        val expected = balanceMargin - ((index + 1) * balanceMargin / allDates.size)
+        val actual = balanceMargin - records.to(LazyList).filter(_.date <= date).foldLeft(0D)(_ + _.amount)
+        (date, actual, expected)
+      }
+
+      val deltaToday = balanceData.find(_._1 == today).map{d => d._2 - d._3}.getOrElse(Double.NaN)
+
+      val cutDay: ScalaDate = (today :: records.map(_.date).maxOption.toList).max
+
+      val outputData = balanceData
+        .map(r =>
+          if (r._1 > cutDay) (r._1, Double.NaN, r._3) else r
+        )
+        .map(r => js.Array[Data](r._1.toJs, r._2, r._3))
+        .toJSArray
+
+      deltaDate.foreach(_.setValue(today.toJs))
+      deltaBalance.foreach(_.setValue(balance))
+      delta.foreach(_.setValue(deltaToday))
+      fullBalance.foreach(_.setValue(balanceMargin))
+
+      for{
+        l <- balanceData.lastOption
+        bf <- balanceLeft
+      } bf.setValue(l._2)
+
+      dataSheet.getRange(2, 9, outputData.size, 3).setValues(outputData)
     }
-
-    val deltaToday = balanceData.find(_._1 == today).map(d => d._2 - d._3).getOrElse(Double.NaN)
-
-    val cutDay: ScalaDate = (today :: records.map(_.date).maxOption.toList).max
-
-    val outputData = balanceData
-      .map(r =>
-        if (r._1 > cutDay) (r._1, Double.NaN, r._3) else r
-      )
-      .map(r => js.Array[Data](r._1.toJs, r._2, r._3))
-      .toJSArray
-
-
-    formSheet.getRange("b6:e6").setValues(js.Array(js.Array[Data](cutDay.toJs, balance, today.toJs, deltaToday)))
-    dataSheet.getRange(2, 9, outputData.size, 3).setValues(outputData)
   }
 
   @JSExportTopLevel("onEdit")
   def onEdit(e: Event): Unit = {
-    if (e.range.getA1Notation() == commit.getA1Notation() && commit.getStringOpt.contains("yes")) {
+    if (commit.exists(c => e.range.getA1Notation() == c.getA1Notation() && c.getStringOpt.contains("yes"))) {
       addBalanceRow()
-      commit.setValue("commit?")
+      commit.foreach(_.setValue("commit?"))
+    } else if (deltaBalance.exists(r => e.range.getA1Notation() == r.getA1Notation())) {
+      deltaBalance.flatMap(_.getStringOpt).foreach(refreshStatistics)
     }
   }
 }
